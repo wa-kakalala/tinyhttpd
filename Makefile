@@ -1,9 +1,14 @@
-all: httpd client
-LIBS = -lpthread #-lsocket
-httpd: httpd.c
-	gcc -g -W -Wall $(LIBS) -o $@ $<
+TARGET=tinyhttpd.c
+CC=g++
 
-client: simpleclient.c
-	gcc -W -Wall -o $@ $<
+CFLAGS += -g -Wall
+LFLAGS += -lpthread
+OBJ = tinyhttpd.o
+
+$(TARGET):$(OBJ)
+	$(CC) $^ $(LFLAGS) -o $@
+	mv $(TARGET) ./build/
+%.o:%.c
+	$(CC) $(CFLAGS) -c $< -o $@
 clean:
-	rm httpd
+	$(RM) -r *.o tinyhttpd
