@@ -7,8 +7,8 @@ OBJ = tinyhttpd.o
 
 $(TARGET):$(OBJ)
 	$(CC) $^ $(LFLAGS) -o $@
-	mv $(TARGET) ./build/
+	mv *.o ./build/
 %.o:%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 clean:
-	$(RM) -r *.o tinyhttpd
+	$(RM) -r ./build/*.o tinyhttpd
