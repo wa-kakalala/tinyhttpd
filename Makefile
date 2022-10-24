@@ -1,7 +1,7 @@
-TARGET=tinyhttpd.c
+TARGET=tinyhttpd
 CC=g++
 
-CFLAGS += -g -Wall
+CFLAGS += -g -Wall 
 LFLAGS += -lpthread
 OBJ = tinyhttpd.o
 

@@ -3,6 +3,7 @@
 #include<unistd.h>
 #include <ctype.h>
 #include<sys/types.h>
+#include<sys/wait.h>
 #include<sys/socket.h>
 #include<netinet/in.h>
 #include<arpa/inet.h>
@@ -14,6 +15,8 @@
 #define ISspace(x) isspace((int)(x))
 #define SERVER_STRING "Server: wkk's WebServer/0.1\r\n"
 
+
+int getLine(int sock, char *buf, int size);
 /**
 * print the error info and exit
 * @param sc error info 
@@ -21,6 +24,109 @@
 void error(const char *sc){
  	perror(sc);
  	exit(1);
+}
+
+/**
+
+*/
+void executeCgi(int client,const char * path,
+				const char * method,const char * query_string){
+	printf("%s-%s-%s\r\n",path,method,query_string);
+	char buf[1024];
+	// 2 pipeline
+	int output[2];
+	int input[2];
+	// pid status
+	pid_t pid;
+	int status;
+
+	int i;
+	char c;
+	// char nums
+	int numchars = 1;
+	int content_length = -1;
+
+	buf[0] = 'A'; buf[1] = '\0';
+	if(strcasecmp(method,"GET") == 0){
+		while((numchars > 0) && strcmp("\n",buf) ){
+			numchars = getLine(client,buf,sizeof(buf));
+		}
+	}else{
+		numchars = getLine(client,buf,sizeof(buf));
+		while((numchars > 0 ) && strcmp("\n",buf)) {
+			// POST -> need Content-Length -> 15 byte
+			buf[15] = '\0';
+			if(strcasecmp(buf,"Content-Length:") == 0){
+				// from 17 byte is length
+				content_length = atoi(buf+16);
+			}
+			// discard others
+			numchars = getLine(client,buf,sizeof(buf));
+		}
+		if (content_length == -1){
+			// bad request
+			return ;
+		}
+	}
+	sprintf(buf, "HTTP/1.0 200 OK\r\n");
+ 	send(client, buf, strlen(buf), 0);
+	// create output line
+	if (pipe(output) < 0) {
+		perror("create output pipeline error \r\n");
+  		return;
+ 	}
+	// create input line
+	if (pipe(input) < 0) {
+		perror("create input pipeline error \r\n");
+  		return;
+ 	}
+	if ( (pid = fork()) < 0 ) {
+		perror("fork error \r\n");
+  		return;
+ 	}
+	if(pid == 0 ){ // child
+		char meth_env[255];
+  		char query_env[255];
+  		char length_env[255];
+		dup2(output[1],1);
+		dup2(input[0],0);
+		close(output[0]);
+		close(input[1]);
+		//cgi env
+		sprintf(meth_env, "REQUEST_METHOD=%s", method);
+		putenv(meth_env);
+		if(strcasecmp(method,"GET") == 0){
+			sprintf(query_env,"QUERY_STRING=%s",query_string);
+			putenv(query_env);
+		}else{
+			sprintf(length_env,"CONTENT_LENGTH=%d",content_length);
+			putenv(length_env);
+		}
+		int res = execl(path,path,NULL);
+		if(res == -1){
+			write(STDOUT_FILENO,"execl error\r\n",13);
+		}
+		exit(0);
+	}else{ // parent
+		close(output[1]);
+		close(input[0]);
+		if( strcasecmp(method,"POST") == 0) {
+			// get data and write to pipeline
+			for(i = 0;i<content_length;i++){
+				recv(client,&c,1,0);
+				write(input[1],&c,1);
+			}
+		}
+		// get data from pipelin and send to client
+		while( read(output[0],&c,1) >0){
+
+			send(client,&c,1,0);
+		}
+		close(output[0]);
+		close(input[1]);
+		// wait for child 
+		waitpid(pid,&status,0);
+	}
 }
 
 /**
@@ -274,7 +380,10 @@ void acceptRequest(void *arg)
       		!(st.st_mode & S_IROTH)){
 			printf("[WebServer]: no permission to read the file\r\n");
 		}
-		serveFile(client, path);
+		if(strlen(query_string) == 0)
+			serveFile(client, path);
+		else
+			executeCgi(client,path,method,query_string);
  	}
  	close(client);
 }
